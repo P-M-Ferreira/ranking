@@ -22,7 +22,7 @@ powershell -ExecutionPolicy Bypass -File .\build_abdc_data.ps1
 powershell -ExecutionPolicy Bypass -File .\build_abs_data.ps1
 ```
 
-ABS/AJG source file: `E:\@VScode\rankings\ABS2024nian.xlsx`
+ABS/AJG source file: `E:\@VScode\rankings\ABS2024.xlsx`
 
 ## Rebuild SJR Data
 
