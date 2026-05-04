@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Journal Ranking Explorer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>Journal Ranking Explorer</h1>
+      <p>ABDC 2025, ABS/AJG 2024, JCR 2025, and SJR 2025 preloaded.</p>
+    </div>
+    <div class="source-note">
+      <span id="recordCount">Loading...</span>
+      <span>Sources: ABDC 2025; ABS/AJG 2024; JCR 2025; SCImago SJR 2025</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="toolbar" aria-label="Search and filters">
+      <label class="search-box">
+        <span>Search</span>
+        <input id="searchInput" type="search" placeholder="Journal title, ISSN, publisher, field">
+      </label>
+      <label>
+        <span>ABDC</span>
+        <select id="abdcFilter">
+          <option value="">All</option>
+        </select>
+      </label>
+      <label>
+        <span>FoR</span>
+        <select id="fieldFilter">
+          <option value="">All fields</option>
+        </select>
+      </label>
+      <label>
+        <span>Coverage</span>
+        <select id="coverageFilter">
+          <option value="">All journals</option>
+          <option value="abs">Has ABS</option>
+          <option value="jcr">Has JCR AIS</option>
+          <option value="sjr">Has SJR/JSR quartile</option>
+          <option value="missing">Missing any imported ranking</option>
+        </select>
+      </label>
+      <button id="resetButton" type="button">Reset</button>
+    </section>
+
+    <section class="summary" aria-label="Summary">
+      <div><strong id="visibleCount">0</strong><span>shown</span></div>
+      <div><strong id="absCount">0</strong><span>ABS matched</span></div>
+      <div><strong id="jcrCount">0</strong><span>JCR AIS matched</span></div>
+      <div><strong id="sjrCount">0</strong><span>SJR/JSR matched</span></div>
+    </section>
+
+    <section class="imports" aria-label="Ranking imports">
+      <details>
+        <summary>Add or update supplemental rankings</summary>
+        <div class="import-grid">
+          <div>
+            <h2>ABS / AJG</h2>
+            <p>ABS/AJG 2024 is preloaded. Optional CSV imports override or add rows: title, issn, field, abs, ajg, rating.</p>
+            <input id="absFile" type="file" accept=".csv,text/csv">
+          </div>
+          <div>
+            <h2>JCR</h2>
+            <p>JCR 2025 is preloaded from the workbook. Optional CSV imports add rows: title, issn, eissn, field, jif, jci, ais, quartile.</p>
+            <input id="jcrFile" type="file" accept=".csv,text/csv">
+          </div>
+          <div>
+            <h2>SJR / JSR Quartiles</h2>
+            <p>SJR 2025 is preloaded. Optional CSV imports add rows: title, issn, eissn, field, category, quartile, sjr.</p>
+            <input id="sjrFile" type="file" accept=".csv,text/csv">
+          </div>
+        </div>
+        <div class="import-actions">
+          <button id="clearImportsButton" type="button">Clear imported rankings</button>
+          <span id="importStatus"></span>
+        </div>
+      </details>
+    </section>
+
+    <section class="table-wrap" aria-label="Journal rankings table">
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="title">Journal</th>
+            <th data-sort="abdc2025">ABDC</th>
+            <th class="col-abs" data-sort="abs">ABS</th>
+            <th class="col-jcr" data-sort="jcrAis">JCR JIF/JCI</th>
+            <th class="col-sjr" data-sort="sjrQuartiles">SJR/JSR Quartiles by Field</th>
+            <th class="col-publisher" data-sort="publisher">Publisher</th>
+            <th class="col-issn" data-sort="issn">ISSN</th>
+          </tr>
+        </thead>
+        <tbody id="journalRows"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
