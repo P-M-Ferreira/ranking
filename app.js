@@ -4,6 +4,7 @@ const state = {
   preloadedAbs: [],
   preloadedJcr: [],
   preloadedSjr: [],
+  consideredSjr: [],
   imports: {
     abs: [],
     jcr: [],
@@ -73,7 +74,7 @@ async function init() {
   state.preloadedSjr = sjrPayload.records.map(normalizeSjrRecord);
   rebuildIndexes();
 
-  els.recordCount.textContent = `${state.journals.length.toLocaleString()} journals; ${state.preloadedAbdc.length.toLocaleString()} ABDC journals; ${state.preloadedAbs.length.toLocaleString()} ABS rows; ${state.preloadedJcr.length.toLocaleString()} JCR rows; ${state.preloadedSjr.length.toLocaleString()} SJR rows`;
+  els.recordCount.textContent = `${state.journals.length.toLocaleString()} journals; ${state.preloadedAbdc.length.toLocaleString()} ABDC journals; ${state.preloadedAbs.length.toLocaleString()} ABS rows; ${state.preloadedJcr.length.toLocaleString()} JCR rows; ${state.consideredSjr.length.toLocaleString()} JCR-matched SJR rows`;
   fillFilters();
   bindEvents();
   render();
@@ -223,12 +224,52 @@ function addIndexedMatches(items, matches, seen) {
 }
 
 function rebuildIndexes() {
+  const jcrRows = [...state.preloadedJcr, ...state.imports.jcr];
+  const sjrRows = filterSjrRowsToJcr([...state.preloadedSjr, ...state.imports.sjr], jcrRows);
+  state.consideredSjr = sjrRows;
   state.indexes = {
     abs: buildRankingIndex([...state.preloadedAbs, ...state.imports.abs], "abs"),
-    jcr: buildRankingIndex([...state.preloadedJcr, ...state.imports.jcr], "jcr"),
-    sjr: buildRankingIndex([...state.preloadedSjr, ...state.imports.sjr], "sjr")
+    jcr: buildRankingIndex(jcrRows, "jcr"),
+    sjr: buildRankingIndex(sjrRows, "sjr")
   };
   state.journals = buildJournalMasterList();
+}
+
+function filterSjrRowsToJcr(sjrRows, jcrRows) {
+  const jcrKeys = buildJcrEligibilityKeys(jcrRows);
+  return sjrRows.filter((row) => hasJcrEligibilityMatch(row, jcrKeys));
+}
+
+function buildJcrEligibilityKeys(rows) {
+  const keys = {
+    issns: new Set(),
+    titles: new Set()
+  };
+
+  rows.forEach((row) => {
+    [
+      ...(Array.isArray(row.issns) ? row.issns : []),
+      row.issn,
+      row.eissn
+    ].map(normalizeIssn).filter(Boolean).forEach((issn) => keys.issns.add(issn));
+
+    const titleKey = row.titleKey || normalizeTitle(row.title);
+    if (titleKey) keys.titles.add(titleKey);
+  });
+
+  return keys;
+}
+
+function hasJcrEligibilityMatch(row, keys) {
+  const issns = [
+    ...(Array.isArray(row.issns) ? row.issns : []),
+    row.issn,
+    row.eissn
+  ].map(normalizeIssn).filter(Boolean);
+  if (issns.some((issn) => keys.issns.has(issn))) return true;
+
+  const titleKey = row.titleKey || normalizeTitle(row.title);
+  return Boolean(titleKey && keys.titles.has(titleKey));
 }
 
 function buildJournalMasterList() {
@@ -238,10 +279,9 @@ function buildJournalMasterList() {
 
   [
     ...state.preloadedAbdc.map((row) => toMasterCandidate(row, "abdc")),
-    ...state.preloadedSjr.map((row) => toMasterCandidate(row, "sjr")),
+    ...state.consideredSjr.map((row) => toMasterCandidate(row, "sjr")),
     ...state.preloadedAbs.map((row) => toMasterCandidate(row, "abs")),
     ...state.preloadedJcr.map((row) => toMasterCandidate(row, "jcr")),
-    ...state.imports.sjr.map((row) => toMasterCandidate(row, "sjr")),
     ...state.imports.abs.map((row) => toMasterCandidate(row, "abs")),
     ...state.imports.jcr.map((row) => toMasterCandidate(row, "jcr"))
   ].forEach((candidate) => {

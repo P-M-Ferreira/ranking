@@ -32,6 +32,8 @@ powershell -ExecutionPolicy Bypass -File .\build_sjr_data.ps1
 
 SJR source file: `E:\@VScode\rankings\scimagojr 2025.csv`
 
+SJR records are filtered to journals that also appear in the JCR JSON by ISSN, eISSN, or normalized title.
+
 ## Rebuild JCR Data
 
 ```powershell
