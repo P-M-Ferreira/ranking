@@ -1,5 +1,6 @@
 const state = {
   journals: [],
+  preloadedAbdc: [],
   preloadedAbs: [],
   preloadedJcr: [],
   preloadedSjr: [],
@@ -66,18 +67,13 @@ async function init() {
     fetch("data/sjr-2025.json").then((response) => response.ok ? response.json() : { records: [] }).catch(() => ({ records: [] }))
   ]);
   const payload = abdcPayload;
+  state.preloadedAbdc = payload.records.map(normalizeAbdcRecord);
   state.preloadedAbs = absPayload.records.map(normalizeAbsRecord);
   state.preloadedJcr = jcrPayload.records.map(normalizeJcrRecord);
   state.preloadedSjr = sjrPayload.records.map(normalizeSjrRecord);
-  state.journals = payload.records.map((journal, index) => ({
-    ...journal,
-    fieldOfResearchLabel: getForLabel(journal.fieldOfResearch),
-    id: index,
-    keys: buildKeys(journal)
-  }));
   rebuildIndexes();
 
-  els.recordCount.textContent = `${state.journals.length.toLocaleString()} ABDC journals; ${state.preloadedAbs.length.toLocaleString()} ABS rows; ${state.preloadedJcr.length.toLocaleString()} JCR rows; ${state.preloadedSjr.length.toLocaleString()} SJR rows`;
+  els.recordCount.textContent = `${state.journals.length.toLocaleString()} journals; ${state.preloadedAbdc.length.toLocaleString()} ABDC journals; ${state.preloadedAbs.length.toLocaleString()} ABS rows; ${state.preloadedJcr.length.toLocaleString()} JCR rows; ${state.preloadedSjr.length.toLocaleString()} SJR rows`;
   fillFilters();
   bindEvents();
   render();
@@ -232,6 +228,110 @@ function rebuildIndexes() {
     jcr: buildRankingIndex([...state.preloadedJcr, ...state.imports.jcr], "jcr"),
     sjr: buildRankingIndex([...state.preloadedSjr, ...state.imports.sjr], "sjr")
   };
+  state.journals = buildJournalMasterList();
+}
+
+function buildJournalMasterList() {
+  const rows = [];
+  const byIssn = new Map();
+  const byTitle = new Map();
+
+  [
+    ...state.preloadedAbdc.map((row) => toMasterCandidate(row, "abdc")),
+    ...state.preloadedSjr.map((row) => toMasterCandidate(row, "sjr")),
+    ...state.preloadedAbs.map((row) => toMasterCandidate(row, "abs")),
+    ...state.preloadedJcr.map((row) => toMasterCandidate(row, "jcr")),
+    ...state.imports.sjr.map((row) => toMasterCandidate(row, "sjr")),
+    ...state.imports.abs.map((row) => toMasterCandidate(row, "abs")),
+    ...state.imports.jcr.map((row) => toMasterCandidate(row, "jcr"))
+  ].forEach((candidate) => {
+    if (!candidate.keys.title && !candidate.keys.issns.size) return;
+
+    const existing = findMasterRow(candidate, byIssn, byTitle);
+    if (existing) {
+      mergeMasterRow(existing, candidate);
+    } else {
+      rows.push(candidate);
+    }
+    indexMasterRow(existing || candidate, byIssn, byTitle);
+  });
+
+  return rows.map((journal, index) => ({
+    ...journal,
+    id: index,
+    fieldOfResearchLabel: getForLabel(journal.fieldOfResearch),
+    keys: buildKeys(journal)
+  }));
+}
+
+function toMasterCandidate(row, source) {
+  const issns = new Set([
+    ...(Array.isArray(row.issns) ? row.issns : []),
+    row.issn,
+    row.eissn
+  ].map(normalizeIssn).filter(Boolean));
+  const title = row.title || "";
+  return {
+    title,
+    publisher: row.publisher || "",
+    issn: normalizeIssn(row.issn) || [...issns][0] || "",
+    eissn: normalizeIssn(row.eissn),
+    issns: [...issns],
+    fieldOfResearch: row.fieldOfResearch || "",
+    fieldOfResearchLabel: getForLabel(row.fieldOfResearch),
+    abdc2025: row.abdc2025 || "",
+    yearInception: row.yearInception || "",
+    titleSource: source,
+    keys: {
+      title: normalizeTitle(title),
+      issns
+    }
+  };
+}
+
+function findMasterRow(candidate, byIssn, byTitle) {
+  for (const issn of candidate.keys.issns) {
+    if (byIssn.has(issn)) return byIssn.get(issn);
+  }
+  return byTitle.get(candidate.keys.title) || null;
+}
+
+function indexMasterRow(row, byIssn, byTitle) {
+  row.keys.issns.forEach((issn) => byIssn.set(issn, row));
+  if (row.keys.title) byTitle.set(row.keys.title, row);
+}
+
+function mergeMasterRow(target, source) {
+  if (!target.abdc2025 && source.abdc2025) {
+    target.abdc2025 = source.abdc2025;
+    target.fieldOfResearch = source.fieldOfResearch;
+    target.yearInception = source.yearInception;
+  }
+  if (!target.publisher && source.publisher) target.publisher = source.publisher;
+  if (!target.issn && source.issn) target.issn = source.issn;
+  if (!target.eissn && source.eissn) target.eissn = source.eissn;
+  source.keys.issns.forEach((issn) => target.keys.issns.add(issn));
+  target.issns = [...target.keys.issns];
+
+  if (!target.title || shouldReplaceTitle(target.title, target.titleSource, source.title, source.titleSource)) {
+    target.title = source.title;
+    target.titleSource = source.titleSource;
+    target.keys.title = source.keys.title;
+  }
+}
+
+function shouldReplaceTitle(currentTitle, currentSource, nextTitle, nextSource) {
+  if (!nextTitle) return false;
+  if (!currentTitle) return true;
+
+  const priority = { abdc: 4, sjr: 3, abs: 2, jcr: 1 };
+  const currentPriority = priority[currentSource] || 0;
+  const nextPriority = priority[nextSource] || 0;
+  const currentLooksUpper = currentTitle === currentTitle.toUpperCase();
+  const nextLooksUpper = nextTitle === nextTitle.toUpperCase();
+
+  if (currentLooksUpper && !nextLooksUpper) return true;
+  return nextPriority > currentPriority;
 }
 
 function buildRankingIndex(rows, type) {
@@ -415,6 +515,19 @@ function normalizeImportRow(row, type) {
   };
 }
 
+function normalizeAbdcRecord(record) {
+  return {
+    ...record,
+    title: record.title || "",
+    issn: normalizeIssn(record.issn),
+    eissn: normalizeIssn(record.eissn),
+    publisher: record.publisher || "",
+    fieldOfResearch: record.fieldOfResearch || "",
+    abdc2025: record.abdc2025 || "",
+    yearInception: record.yearInception || ""
+  };
+}
+
 function normalizeAbsRecord(record) {
   const title = record.title || "";
   const issn = normalizeIssn(record.issn);
@@ -440,6 +553,7 @@ function normalizeJcrRecord(record) {
     issn: normalizeIssn(record.issn),
     eissn: normalizeIssn(record.eissn),
     field: record.field || "",
+    publisher: record.publisher || "",
     quartile: normalizeQuartile(record.quartile),
     ais: record.ais || "",
     jif: record.jif || "",
@@ -462,6 +576,7 @@ function normalizeSjrRecord(record) {
     eissn: "",
     issns,
     field: record.field || "",
+    publisher: record.publisher || "",
     quartile: normalizeQuartile(record.quartile || record.bestQuartile),
     bestQuartile: normalizeQuartile(record.bestQuartile),
     sjr: record.sjr || "",
@@ -548,7 +663,11 @@ function normalizeQuartile(value) {
 function buildKeys(journal) {
   return {
     title: normalizeTitle(journal.title),
-    issns: new Set([normalizeIssn(journal.issn), normalizeIssn(journal.eissn)].filter(Boolean))
+    issns: new Set([
+      ...(Array.isArray(journal.issns) ? journal.issns : []),
+      journal.issn,
+      journal.eissn
+    ].map(normalizeIssn).filter(Boolean))
   };
 }
 
